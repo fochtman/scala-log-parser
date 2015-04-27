@@ -1,35 +1,46 @@
 
+import java.nio.charset.CodingErrorAction
+import scala.io.Codec
+
 import HTTPLogParser._
 import util.{Success, Failure}
+import io.Codec._
 
 object Main {
 
   def main(args: Array[String]) : Unit = {
-    var i = 1
     val filename = args(0)
+
+    // ISO Latin Alphabet No. 1, a.k.a. ISO-LATIN-1
+    val charSet = "ISO-8859-1"
+    implicit val codec = Codec(charSet)
+    codec.onMalformedInput(CodingErrorAction.REPLACE)
+    codec.onUnmappableCharacter(CodingErrorAction.REPLACE)
+
+    var i = 1
+    val lines = scala.io.Source.fromFile(filename)(charSet)
+
     val finalResult =
       for {
-        line <- scala.io.Source.fromFile(filename).getLines()
-        res = new NCSA(line).InputLine.run()
+        l <- lines.getLines()
+        res = new NCSA(l.trim).InputLine.run()
       } yield {
-
         res match {
           case Success(expr) =>
             i += 1
-            true
+            1.toByte
           case Failure(expr) =>
-            println(i, "     ", expr)
             i += 1
-            false
+            0.toByte
         }
       }
     println("FINISHED PARSING")
-    println("# PARSED CORRECTLY:")
-    println(finalResult.toList.count(_ == true))
+
+    val count = finalResult.count(_ == 1.toByte)
+
+    println("# PARSED CORRECTLY: " + count)
+    println("OUT OF TOTAL: " + i)
     println
-    println("OUT OF TOTAL:")
-    println(i)
-
+    println(i - count)
   }
-
 }
