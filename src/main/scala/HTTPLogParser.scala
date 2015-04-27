@@ -8,6 +8,7 @@ object HTTPLogParser {
   case class UserName(s: String) extends Log
   case class Date(dmy: String, hms: String, zone: String) extends Log
   case class Request(m: String, r: String, p: String) extends Log
+  case class Request0(m: String, r: String) extends Log
   case class StatusCode(s: String) extends Log
   case class Bytes(s: String) extends Log
 
@@ -17,7 +18,7 @@ object HTTPLogParser {
     }
 
     def Expression: Rule1[List[Log]] = rule {
-      host ~ rfc ~ userName ~ date ~ request ~ statusCode ~ bytes ~> (List(_: Host, _: Rfc, _: UserName, _: Date, _: Request, _: StatusCode, _: Bytes))
+      host ~ rfc ~ userName ~ date ~ request ~ statusCode ~ bytes ~> (List(_: Host, _: Rfc, _: UserName, _: Date, _: Request0, _: StatusCode, _: Bytes))
       //host ~ rfc ~ userName ~ date ~ request ~ statusCode ~ bytes ~> ((h: Host, r: Rfc, u: UserName, d: Date, rq: Request, sc: StatusCode, b: Bytes) => List(h, r, u, d, rq, sc, b))
     }
 
@@ -25,7 +26,8 @@ object HTTPLogParser {
     def host: Rule1[Host]        = rule { SubDomain ~> (Host(_)) ~ ws }
     //def host: Rule1[Host]        = rule { (IP | SubDomain) ~> (Host(_)) ~ ws }
     def IP: Rule1[String]        = rule { capture(oneOrMore(oneOrMore(Digits)).separatedBy('.')) }
-    def SubDomain: Rule1[String] = rule { capture(oneOrMore(oneOrMore(AlphaNums).separatedBy(anyOf(".-_")))) }
+    def SubDomain: Rule1[String] = rule { capture(oneOrMore(URLChars)) }
+    //def SubDomain: Rule1[String] = rule { capture(oneOrMore(oneOrMore(AlphaNums).separatedBy(anyOf(".-_")))) }
 
     def rfc: Rule1[Rfc]            = rule { capture('-') ~> (Rfc(_)) ~ ws }
     def userName: Rule1[UserName]  = rule { capture('-') ~> (UserName(_)) ~ ws }
@@ -44,10 +46,13 @@ object HTTPLogParser {
     /** Date, End **/
 
     /** HTTP Request, Start **/
-    def request    = rule { '"' ~ (Method ~ Resource ~ Protocol ~> (Request(_, _, _))) ~ ws } //~ '"' ~ ws }
+    def request    = rule { '"' ~ (Method ~ Resource ~> (Request0(_, _))) ~ ws } //~ '"' ~ ws }
+    //def request    = rule { '"' ~ (Method ~ Resource ~ Protocol ~> (Request(_, _, _))) ~ ws } //~ '"' ~ ws }
     def Method     = rule { capture("GET" | "POST" | "HEAD" | "PUT" | "DELETE" | "TRACE" | "CONNECT") ~ ws }
-    def Resource   = rule { capture(oneOrMore(URLChars)) }
-    def Protocol   = rule { optional('/') ~ oneOrMore(ws) ~ capture("HTTP/" ~ ("1.0" | "V1.0")) ~ '"' | capture('"')}
+    //def Resource   = rule { capture(oneOrMore(URLChars)) ~ '"' }
+    //def Protocol   = rule { optional('/') ~ oneOrMore(ws) ~ capture("HTTP/" ~ ("1.0" | "V1.0")) ~ '"' | capture('"') | ws ~ capture('"') }
+    def Resource   = rule { capture(oneOrMore(oneOrMore(URLChars)).separatedBy(oneOrMore(ws)) | oneOrMore(URLChars) ~ ws) ~ '"' }
+    def Protocol   = rule { optional('/') ~ oneOrMore(ws) ~ capture("HTTP/" ~ ("1.0" | "V1.0")) ~ '"' | capture('"') | ws ~ capture('"') }
     /** HTTP Request, End **/
 
     def statusCode = rule { capture((ch('1') | ch('2') | ch('3') | ch('4') | '5') ~ twoDigits) ~> (StatusCode(_)) ~ ws }
