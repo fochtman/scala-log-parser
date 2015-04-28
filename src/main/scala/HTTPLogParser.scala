@@ -1,13 +1,10 @@
 import com.mongodb.casbah.Imports._
 import org.parboiled2._
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.regex.Pattern
+import org.joda.time.format.DateTimeFormat
 
 object HTTPLogParser {
 
-  // TODO: Add methods to covert bytes to null or Int, same with statusCode
-  // import org.joda.time.format.ISODateTimeFormat
-  // TODO: convert date to ISODate
   // TODO: update pegFullNCSA with latest knowledge about PEG efficiency
 
   sealed trait Log
@@ -24,17 +21,25 @@ object HTTPLogParser {
   ) extends Log
 
   object NCSACommonLog {
+    def getRfc(r: String) = if (r == "-") null else r
+
+    def getUsr(u: String) = if (u == "-") null else u
+
+    val formatter = DateTimeFormat.forPattern("dd/MMM/yyyy:HH:mm:ss Z")
+
+    def getBytes(b: String) = if (b == "-") null else b.toInt
+
     def toBson(log: NCSACommonLog): DBObject = {
       MongoDBObject(
-        "host" -> log.host,
-        "rfc" -> log.rfc,
-        "userName" -> log.userName,
-        "date" -> log.date,
-        "method" -> log.method,
-        "resource" -> log.resource,
-        "statusCode" -> log.statusCode,
-        "bytes" -> log.bytes,
-        "_id" -> log.id
+        "host"        -> log.host,
+        "rfc"         -> getRfc(log.rfc),
+        "userName"    -> getUsr(log.userName),
+        "date"        -> formatter.parseDateTime(log.date),
+        "method"      -> log.method,
+        "resource"    -> log.resource,
+        "statusCode"  -> log.statusCode,
+        "bytes"       -> getBytes(log.bytes),
+        "_id"         -> log.id
       )
     }
   }
@@ -125,3 +130,9 @@ object HTTPLogParser {
       Option(NCSACommonLog(m.group(1), m.group(2), m.group(3), m.group(4), m.group(5), m.group(6), m.group(7), m.group(8)))
   }
 }
+
+// DateTime(int year, int monthOfYear, int dayOfMonth, int hourOfDay, int minuteOfHour)
+// 01/Jul/1995:00:00:06 -0400
+// val dtf = ISODateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'") .withLocale(Locale.ROOT)	.withChronology(ISOChronology.getInstanceUTC());
+// import org.joda.time.DateTimeComparator._
+// val d2 = new DateTime(1995, 7, 1, 5, 6, 7).withZone(DateTimeZone.forID("-04:00"))
