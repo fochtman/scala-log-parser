@@ -2,7 +2,7 @@ import com.mongodb.casbah.Imports._
 import org.parboiled2._
 import java.util.regex.Pattern
 import org.joda.time.format.DateTimeFormat
-
+import com.mongodb.casbah.commons.conversions.scala._
 object HTTPLogParser {
 
   // TODO: update pegFullNCSA with latest knowledge about PEG efficiency
@@ -25,21 +25,31 @@ object HTTPLogParser {
 
     def getUsr(u: String) = if (u == "-") null else u
 
+    RegisterJodaTimeConversionHelpers()
     val formatter = DateTimeFormat.forPattern("dd/MMM/yyyy:HH:mm:ss Z")
 
     def getBytes(b: String) = if (b == "-") null else b.toInt
 
-    def toBson(log: NCSACommonLog): DBObject = {
+    def toBSON(log: NCSACommonLog): DBObject = {
       MongoDBObject(
         "host"        -> log.host,
         "rfc"         -> getRfc(log.rfc),
         "userName"    -> getUsr(log.userName),
+        "date"        -> log.date,
+        "method"      -> log.method,
+        "resource"    -> log.resource,
+        "statusCode"  -> log.statusCode,
+        "bytes"       -> getBytes(log.bytes)
+      )
+    }
+    def toBSONSmall(log: NCSACommonLog): DBObject = {
+      MongoDBObject(
+        "host"        -> log.host,
         "date"        -> formatter.parseDateTime(log.date),
         "method"      -> log.method,
         "resource"    -> log.resource,
         "statusCode"  -> log.statusCode,
-        "bytes"       -> getBytes(log.bytes),
-        "_id"         -> log.id
+        "bytes"       -> getBytes(log.bytes)
       )
     }
   }
