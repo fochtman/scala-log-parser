@@ -54,7 +54,7 @@ object HTTPLogParser {
     }
   }
 
-  class pegPartNCSA(val input: ParserInput) extends Parser {
+  class parseLine(val input: ParserInput) extends Parser {
     import CharPredicate.{Digit, Alpha}
     def InputLine: Rule1[NCSACommonLog] = rule {
       capture(url) ~ ws ~ capture(url) ~ ws ~ capture(url) ~ ws ~

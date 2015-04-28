@@ -1,39 +1,37 @@
-
 import HTTPLogParser._
 import java.nio.charset.CodingErrorAction
 import com.mongodb.casbah.MongoClient
 import com.mongodb.casbah.Imports._
-import io.Codec._
+import scala.io.Codec._
 import scala.io.{Source, Codec, StdIn}
 import scala.util.{Success, Failure}
 import scala.annotation.tailrec
 import scala.concurrent._
-import java.io.{ByteArrayOutputStream, PrintStream}
-import scala.Some
-import scala.collection.JavaConverters._
-import com.mongodb.util.JSON
 
 
+//import org.bson.BSONObject
+//import com.mongodb.hadoop.MongoInputFormat
+//import org.apache.spark.SparkConf
+//import org.apache.spark.SparkContext
+//import org.apache.spark.SparkContext._
+//import org.apache.hadoop.conf.Configuration
 object Main {
   val usage = """
     |
-    |Example:
-    |  mongoimport --uri mongodb://localhost/my_db.my_collection
-    |
     |Options:
-    |  --help                                produce help message
-    |  --uri arg                             The connection URI - must contain a collection
-    |                                        mongodb://[username:password@]host1[:port1][,host2[:port2]]/database.collection[?options]""".stripMargin
+    |  --help         produce help message
+    |  --uri arg      The connection URI, it must contain a collection
+    |                 Example: mongodb://localhost:27017/db.collection
+    |  --use arg      spark | mongo""".stripMargin
 
   val alisDB = "access_log_invariant_search"
-  val alco   = "access_log_collection"
-  case class Options(uri: Option[String] = Some(s"mongodb://localhost:27017/$alisDB.$alco"))
+  val alcoCO = "access_log_collection"
+  case class Options(uri: Option[String] = Some(s"mongodb://localhost:27017/$alisDB.$alcoCO"), use: Option[String] = None)
 
   val charSet        = "ISO-8859-1" // ISO Latin Alphabet No. 1, a.k.a. ISO-LATIN-1
   implicit val codec = Codec(charSet)
   codec.onMalformedInput(CodingErrorAction.REPLACE)
   codec.onUnmappableCharacter(CodingErrorAction.REPLACE)
-
 
   def main(args: Array[String]) : Unit = {
 
@@ -42,81 +40,85 @@ object Main {
       sys.exit(1)
     }
 
-    val optionMap = parseArgs(Map(), args.toList)
-    val options = getOptions(optionMap)
+    val options = getOptions(getArgs(Map(), args.toList))
 
-    val mongoClientURI = MongoClientURI(options.uri.get)
-
-    println(mongoClientURI)
-    println(mongoClientURI.database.get)
-    println(mongoClientURI.collection.get)
-
-    val mc = MongoClient(mongoClientURI)
-    val db = mc(mongoClientURI.database.get)
-    val co = db(mongoClientURI.collection.get)
-    importAccessLogs(co, options)
-  }
-
-  private def parseArgs(map: Map[String, Any], args: List[String]): Map[String, Any] = {
-    args match {
-      case Nil => map
-      //case "--uri" :: value :: tail =>
-      case "--uri" :: value =>
-        val uriStr: Option[String] =
-          if (value.head == "default") Options().uri
-          else Some(value.head)
-        parseArgs(map ++ Map("uri" -> uriStr), Nil)
-      case option :: tail =>
-        Console.err.println("Unknown option " + option)
-        Console.err.println(usage)
-        sys.exit(1)
+    if (options.use.get == "mongo") {
+      val mcURI   = MongoClientURI(options.uri.get)
+      val mc      = MongoClient(mcURI)
+      val db      = mc(mcURI.database.get)
+      val co      = db(mcURI.collection.get)
+      insertAccessLogs(co, options)
     }
+    else if (options.use.get == "spark")
+      runSpark(options)
   }
 
-  private def getOptions(optionMap: Map[String, _]): Options = {
+
+  private def runSpark(options: Options): Unit = {
+    println("HERE")
+  }
+  /*
+    val sc = new SparkContext("local", "LogFiles")
+
+    val config = new Configuration()
+    config.set("mongo.input.uri", options.uri.get)
+    //config.set("mongo.output.uri", "mongodb://127.0.0.1:27017/beowulf.output")
+
+    val mongoRDD = sc.newAPIHadoopRDD(config, classOf[com.mongodb.hadoop.MongoInputFormat], classOf[Object], classOf[BSONObject])
+
     /*
-    val default = Options()
-    Options(
-      uri = optionMap.get("uri") match {
-        case None => default.uri
-        case Some(value: String) => Some(value.asInstanceOf[String])
-        //case Some(value) => Some(value.asInstanceOf[String])
-      }
-    )
-    */
-    Options()
-  }
+    // Input contains tuples of (ObjectId, BSONObject)
+    val countsRDD = mongoRDD.flatMap(arg => {
+      var str = arg._2.get("text").toString
+      str = str.toLowerCase().replaceAll("[.,!?\n]", " ")
+      str.split(" ")
+    })
+      .map(word => (word, 1))
+      .reduceByKey((a, b) => a + b)
 
-  private def spinWheel(someFuture: Future[_]) {
-    // Let the user know something is happening until futureOutput isCompleted
-    val spinChars = List("!", "/", "$", "\\")
-    while (!someFuture.isCompleted) {
-      spinChars.foreach({
-        case char =>
-          Console.err.print(char)
-          Thread sleep 200
-          Console.err.print("\b")
-      })
+    // Output contains tuples of (null, BSONObject) - ObjectId will be generated by Mongo driver if null
+    val saveRDD = countsRDD.map((tuple) => {
+      var bson = new BasicBSONObject()
+      bson.put("word", tuple._1)
+      bson.put("count", tuple._2)
+      (null, bson)
+    })
+    // Only MongoOutputFormat and config are relevant
+    saveRDD.saveAsNewAPIHadoopFile("file:///bogus", classOf[Any], classOf[Any], classOf[com.mongodb.hadoop.MongoOutputFormat[Any, Any]], config)
+    */
+  }
+  */
+
+  private def spin(ftr: Future[_]) {
+    while (!ftr.isCompleted) {
+      List("!", "/", "$", "\\") foreach { i =>
+        Console.err.print(i)
+        Thread sleep 200
+        Console.err.print("\b")
+      }
     }
     Console.err.println("")
   }
 
-  private def importAccessLogs(co: MongoCollection, options: Options) {
+  private def insertAccessLogs(co: MongoCollection, options: Options) {
+    import NCSACommonLog.toBSONSmall
     def unBuilder = co.initializeUnorderedBulkOperation
     val batchSize = 1000
+
+    def parseInsert(lns: Iterator[String]) = {
+      val bldr = unBuilder
+      lns.take(batchSize) foreach (
+        new parseLine(_).InputLine.run() match {
+          case Success(e) => bldr.insert(toBSONSmall(e))
+          case _          => // aka Failure
+        })
+      bldr.execute()
+    }
 
     def batchInsert(filename: String): Unit = {
       val a      = System.currentTimeMillis()
       val lns    = Source.fromFile(filename)(charSet).getLines()
-      while (lns.hasNext) {
-        val bldr = unBuilder
-        lns.take(batchSize) foreach (line =>
-          new pegPartNCSA(line.trim).InputLine.run() match {
-            case Success(e) => bldr.insert(NCSACommonLog.toBSONSmall(e))
-            case _ => // aka Failure
-          })
-        bldr.execute()
-      }
+      while (lns.hasNext) parseInsert(lns)
       val z      = System.currentTimeMillis()
       println(s"Inserted ${co.count()} HTTP access logs from $filename in ${a - z} milliseconds.")
     }
@@ -129,6 +131,44 @@ object Main {
         case filename => { batchInsert(filename); REPL() }
       }
     }
+  }
+
+  type ArgMap = Map[String, Any]
+  private def getArgs(map: ArgMap, args: List[String]): ArgMap = {
+    args match {
+      case Nil => map
+      case "--uri" :: value :: tail =>
+        val uriStr: Option[String] =
+          if (value == "default") Options().uri
+          else Some(value)
+        getArgs(map ++ Map("uri" -> uriStr), tail)
+      case "--use" :: value :: tail =>
+        val useStr: Option[String] =
+          if (value == "spark") Some("spark")
+          else if (value == "mongo") Some("mongo")
+          else None
+        getArgs(map ++ Map("use" -> useStr), tail)
+      case option :: tail =>
+        Console.err.println("Unknown option " + option)
+        Console.err.println(usage)
+        sys.exit(1)
+    }
+  }
+
+  private def getOptions(optionMap: Map[String, _]): Options = {
+    val default = Options()
+    Options(
+      uri = optionMap.get("uri") match {
+        case None => default.uri
+        case Some(v: String) => Some(v)
+        //case Some(value: String) => Some(value.asInstanceOf[String])
+        //case Some(value) => Some(value.asInstanceOf[String])
+      },
+      use = optionMap.get("use") match {
+        case None => default.use
+        case Some(v: String) => Some(v)
+      }
+    )
   }
 
   private def performParseComparison(filename: String): Unit = {
@@ -159,7 +199,7 @@ object Main {
       val lines = Source.fromFile(filename)(charSet)
       val then = System.currentTimeMillis()
       lines.getLines() foreach ( line =>
-        new pegPartNCSA(line.trim).InputLine.run() match {
+        new parseLine(line.trim).InputLine.run() match {
           case Success(expr: NCSACommonLog) =>
             goods += 1
             if (goods == 1) println(expr)
