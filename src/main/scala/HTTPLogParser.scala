@@ -54,8 +54,8 @@ object HTTPLogParser {
     }
   }
 
+  import CharPredicate.{Digit, Alpha}
   class parseLine(val input: ParserInput) extends Parser {
-    import CharPredicate.{Digit, Alpha}
     def InputLine: Rule1[NCSACommonLog] = rule {
       capture(url) ~ ws ~ capture(url) ~ ws ~ capture(url) ~ ws ~
       '[' ~ capture(digit2 ~ '/' ~ alpha3 ~ '/' ~ digit4 ~ ':' ~  // date ../../....:
